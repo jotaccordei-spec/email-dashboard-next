@@ -1,24 +1,20 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { NextRequest, NextResponse } from 'next/server';
-import { getPaths } from '@/lib/store';
+import { readGeneratedFile } from '@/lib/store';
 
 export async function GET(_: NextRequest, context: { params: Promise<{ name: string }> }) {
   const { name } = await context.params;
   const decoded = decodeURIComponent(name);
-  const { generatedDir } = getPaths();
-  const fullPath = path.join(generatedDir, decoded);
+  const file = readGeneratedFile(decoded);
 
-  if (!fullPath.startsWith(generatedDir) || !fs.existsSync(fullPath)) {
+  if (!file) {
     return NextResponse.json({ error: 'Arquivo não encontrado' }, { status: 404 });
   }
 
-  const content = fs.readFileSync(fullPath);
-  return new NextResponse(content, {
+  return new NextResponse(new Uint8Array(file.content), {
     status: 200,
     headers: {
       'Content-Type': 'application/octet-stream',
-      'Content-Disposition': `attachment; filename="${decoded}"`,
+      'Content-Disposition': `attachment; filename="${file.name}"`,
     },
   });
 }

@@ -8,9 +8,9 @@ export async function POST(request: NextRequest) {
   const password = String(formData.get('password') ?? '');
 
   if (!isValidCredential(user, password)) {
-    return redirectTo(request, '/admin/upload', { error: 'Credenciais inválidas' });
+    return redirectTo('/admin/upload', { error: 'Credenciais inválidas' });
   }
 
   await createSession();
-  return redirectTo(request, '/admin/upload');
+  return redirectTo('/admin/upload');
 }

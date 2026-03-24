@@ -1,8 +1,7 @@
-import { NextRequest } from 'next/server';
 import { clearSession } from '@/lib/auth';
 import { redirectTo } from '@/lib/redirect';
 
-export async function POST(request: NextRequest) {
+export async function POST() {
   await clearSession();
-  return redirectTo(request, '/admin/upload');
+  return redirectTo('/admin/upload');
 }

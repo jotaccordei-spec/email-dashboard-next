@@ -1,49 +1,76 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { DashboardState } from '@/lib/types';
 
-const dataDir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
-const statePath = path.join(dataDir, 'dashboard-state.json');
-const uploadsDir = path.join(dataDir, 'uploads');
-const generatedDir = path.join(dataDir, 'generated');
+type StoredBinaryFile = {
+  content: Buffer;
+  name: string;
+  size: number;
+  updatedAt: string;
+};
 
-function ensureDirs(): void {
-  fs.mkdirSync(dataDir, { recursive: true });
-  fs.mkdirSync(uploadsDir, { recursive: true });
-  fs.mkdirSync(generatedDir, { recursive: true });
+type DashboardMemoryStore = {
+  generatedFiles: Map<string, StoredBinaryFile>;
+  state: DashboardState | null;
+  uploadedFiles: Map<string, StoredBinaryFile>;
+};
+
+declare global {
+  var __dashboardMemoryStore: DashboardMemoryStore | undefined;
 }
 
-export function getPaths() {
-  ensureDirs();
-  return { dataDir, statePath, uploadsDir, generatedDir };
+function getMemoryStore(): DashboardMemoryStore {
+  if (!globalThis.__dashboardMemoryStore) {
+    globalThis.__dashboardMemoryStore = {
+      generatedFiles: new Map(),
+      state: null,
+      uploadedFiles: new Map(),
+    };
+  }
+
+  return globalThis.__dashboardMemoryStore;
+}
+
+function sanitizeFileName(fileName: string): string {
+  return fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
 export function readDashboardState(): DashboardState | null {
-  const { statePath } = getPaths();
-  if (!fs.existsSync(statePath)) return null;
-  const raw = fs.readFileSync(statePath, 'utf-8');
-  return JSON.parse(raw) as DashboardState;
+  return getMemoryStore().state;
 }
 
 export function saveDashboardState(state: DashboardState): void {
-  const { statePath } = getPaths();
-  fs.writeFileSync(statePath, JSON.stringify(state, null, 2), 'utf-8');
+  getMemoryStore().state = state;
 }
 
 export function saveUploadedFile(fileName: string, bytes: Buffer): string {
-  const { uploadsDir } = getPaths();
-  const safeName = `${Date.now()}-${fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-  const fullPath = path.join(uploadsDir, safeName);
-  fs.writeFileSync(fullPath, bytes);
-  return fullPath;
+  const safeName = `${Date.now()}-${sanitizeFileName(fileName)}`;
+  getMemoryStore().uploadedFiles.set(safeName, {
+    name: safeName,
+    size: bytes.byteLength,
+    updatedAt: new Date().toISOString(),
+    content: Buffer.from(bytes),
+  });
+
+  return safeName;
+}
+
+export function saveGeneratedFile(fileName: string, bytes: Buffer): string {
+  const safeName = sanitizeFileName(fileName);
+  getMemoryStore().generatedFiles.set(safeName, {
+    name: safeName,
+    size: bytes.byteLength,
+    updatedAt: new Date().toISOString(),
+    content: Buffer.from(bytes),
+  });
+
+  return safeName;
+}
+
+export function readGeneratedFile(fileName: string): StoredBinaryFile | null {
+  return getMemoryStore().generatedFiles.get(fileName) ?? null;
 }
 
 export function listGeneratedFiles(): Array<{ name: string; size: number; updatedAt: string }> {
-  const { generatedDir } = getPaths();
-  return fs.readdirSync(generatedDir)
-    .map((name) => {
-      const stat = fs.statSync(path.join(generatedDir, name));
-      return { name, size: stat.size, updatedAt: stat.mtime.toISOString() };
-    })
+  return [...getMemoryStore().generatedFiles.values()]
+    .map((file) => ({ name: file.name, size: file.size, updatedAt: file.updatedAt }))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
