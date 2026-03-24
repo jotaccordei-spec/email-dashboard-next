@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createSession, isValidCredential } from '@/lib/auth';
+import { redirectTo } from '@/lib/redirect';
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
@@ -7,9 +8,9 @@ export async function POST(request: NextRequest) {
   const password = String(formData.get('password') ?? '');
 
   if (!isValidCredential(user, password)) {
-    return NextResponse.redirect(new URL('/admin/upload?error=Credenciais%20inv%C3%A1lidas', request.url));
+    return redirectTo(request, '/admin/upload', { error: 'Credenciais inválidas' });
   }
 
   await createSession();
-  return NextResponse.redirect(new URL('/admin/upload', request.url));
+  return redirectTo(request, '/admin/upload');
 }

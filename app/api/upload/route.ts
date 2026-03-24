@@ -1,19 +1,20 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { isAuthenticated } from '@/lib/auth';
 import { parseSpreadsheet, processRows, validateColumns } from '@/lib/data';
+import { redirectTo } from '@/lib/redirect';
 import { saveDashboardState, saveUploadedFile } from '@/lib/store';
 
 export async function POST(request: NextRequest) {
   const authenticated = await isAuthenticated();
   if (!authenticated) {
-    return NextResponse.redirect(new URL('/admin/upload?error=Sess%C3%A3o%20inv%C3%A1lida', request.url));
+    return redirectTo(request, '/admin/upload', { error: 'Sessão inválida' });
   }
 
   const formData = await request.formData();
   const file = formData.get('file');
 
   if (!(file instanceof File)) {
-    return NextResponse.redirect(new URL('/admin/upload?error=Arquivo%20n%C3%A3o%20enviado', request.url));
+    return redirectTo(request, '/admin/upload', { error: 'Arquivo não enviado' });
   }
 
   const bytes = Buffer.from(await file.arrayBuffer());
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
     const data = processRows(rows);
 
     if (data.length === 0) {
-      return NextResponse.redirect(new URL('/admin/upload?error=Nenhum%20dado%20v%C3%A1lido%20foi%20processado', request.url));
+      return redirectTo(request, '/admin/upload', { error: 'Nenhum dado válido foi processado' });
     }
 
     saveUploadedFile(file.name, bytes);
@@ -35,9 +36,9 @@ export async function POST(request: NextRequest) {
       data,
     });
 
-    return NextResponse.redirect(new URL(`/admin/upload?success=${encodeURIComponent(`Base salva com ${data.length.toLocaleString('pt-BR')} linhas`)}`, request.url));
+    return redirectTo(request, '/admin/upload', { success: `Base salva com ${data.length.toLocaleString('pt-BR')} linhas` });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Falha ao processar arquivo';
-    return NextResponse.redirect(new URL(`/admin/upload?error=${encodeURIComponent(message)}`, request.url));
+    return redirectTo(request, '/admin/upload', { error: message });
   }
 }

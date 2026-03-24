@@ -1,14 +1,13 @@
-import { redirect } from 'next/navigation';
+import Link from 'next/link';
 import { isAuthenticated } from '@/lib/auth';
 import { listGeneratedFiles, readDashboardState } from '@/lib/store';
 
 export default async function UploadPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const authenticated = await isAuthenticated();
   const params = await searchParams;
+  const error = typeof params.error === 'string' ? params.error : '';
 
   if (!authenticated) {
-    const error = typeof params.error === 'string' ? params.error : '';
-
     return (
       <div className="login-shell page">
         <div className="auth-card">
@@ -38,6 +37,7 @@ export default async function UploadPage({ searchParams }: { searchParams: Promi
         </div>
 
         {success ? <div className="success-box" style={{ marginTop: 18 }}>{success}</div> : null}
+        {error ? <div className="error-box" style={{ marginTop: 18 }}>{error}</div> : null}
 
         <div className="upload-box">
           <form action="/api/upload" method="post" encType="multipart/form-data" className="form-grid">
@@ -56,7 +56,7 @@ export default async function UploadPage({ searchParams }: { searchParams: Promi
         </div>
 
         <div style={{ display: 'flex', gap: 12, marginTop: 18, flexWrap: 'wrap' }}>
-          <a className="secondary-btn" href="/">Ir para dashboard</a>
+          <Link className="secondary-btn" href="/">Ir para dashboard</Link>
           <form action="/api/logout" method="post"><button className="secondary-btn" type="submit">Sair</button></form>
         </div>
 

@@ -6,25 +6,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
   const state = readDashboardState();
   const params = await searchParams;
 
-  if (!state) {
-    return (
-      <div className="empty-shell page">
-        <div className="empty-card">
-          <h1>Dashboard Email Marketing</h1>
-          <p className="muted">
-            Ainda não existe uma base carregada no servidor. O upload agora fica fora da home principal, em uma área restrita,
-            como você pediu.
-          </p>
-          <div className="small-list">
-            <div className="file-line"><span>Área de upload</span><strong>/admin/upload</strong></div>
-            <div className="file-line"><span>Persistência</span><strong>server-side</strong></div>
-            <div className="file-line"><span>Estado</span><strong>mantido entre acessos</strong></div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const filters: Filters = {
     grupo: typeof params.grupo === 'string' ? params.grupo : undefined,
     campanha: typeof params.campanha === 'string' ? params.campanha : undefined,
