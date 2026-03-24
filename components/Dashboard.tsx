@@ -1,7 +1,19 @@
 import Link from 'next/link';
-import { EvolutionChart, PhaseDonut } from '@/components/Charts';
-import { aggregate, applyFilters, percentage, uniqueValues } from '@/lib/data';
-import { DataRow, DashboardState, Filters } from '@/lib/types';
+import { FunnelChart, ReguaOpenRateChart } from '@/components/Charts';
+import {
+  aggregate,
+  applyEmailTypeFilter,
+  applyFilters,
+  buildCampaignPerformance,
+  buildFunnelSteps,
+  buildGroupPerformance,
+  buildPhasePerformance,
+  buildReguaPerformance,
+  buildReguaSeries,
+  percentage,
+  uniqueValues,
+} from '@/lib/data';
+import { DashboardState, Filters, PhasePerformance, ReguaPerformance } from '@/lib/types';
 
 function fmt(n: number): string {
   if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
@@ -9,35 +21,18 @@ function fmt(n: number): string {
   return n.toLocaleString('pt-BR');
 }
 
-function buildMonthlySeries(data: DataRow[]) {
-  const byMonth: Record<string, { enviados: number; abertos: number; cliques: number }> = {};
-  for (const row of data) {
-    if (!byMonth[row[4]]) byMonth[row[4]] = { enviados: 0, abertos: 0, cliques: 0 };
-    byMonth[row[4]].enviados += row[5];
-    byMonth[row[4]].abertos += row[7];
-    byMonth[row[4]].cliques += row[8];
-  }
-
-  const months = Object.keys(byMonth).sort().slice(-24);
-  return {
-    labels: months.map((m) => m.slice(2)),
-    enviados: months.map((m) => byMonth[m].enviados),
-    abertos: months.map((m) => byMonth[m].abertos),
-    cliques: months.map((m) => byMonth[m].cliques),
-  };
-}
-
-function hasActiveFilters(filters: Filters): boolean {
-  return Boolean(filters.grupo || filters.campanha || filters.fase || filters.dateFrom || filters.dateTo);
+function hasActiveGlobalFilters(filters: Filters): boolean {
+  return Boolean(filters.grupo || filters.campanha || filters.faseCrm || filters.dateFrom || filters.dateTo);
 }
 
 function buildAppliedFilters(filters: Filters): Array<[string, string]> {
   return [
     ['Grupo', filters.grupo ?? 'Todos'],
     ['Campanha', filters.campanha ?? 'Todas'],
-    ['Fase', filters.fase ?? 'Todas'],
+    ['Fase CRM', filters.faseCrm ?? 'Todas'],
+    ['Tipo de e-mail (régua)', filters.emailType ?? 'Todos'],
     ['Período', filters.dateFrom || filters.dateTo
-      ? `${filters.dateFrom?.slice(0, 7) ?? 'início'} até ${filters.dateTo?.slice(0, 7) ?? 'hoje'}`
+      ? `${filters.dateFrom ?? 'início'} até ${filters.dateTo ?? 'hoje'}`
       : 'Completo'],
   ];
 }
@@ -87,15 +82,19 @@ function DashboardFilters({
           {grupos.map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
         <select name="campanha" defaultValue={filters.campanha ?? ''} className="select-chip">
-          <option value="">Campanha / E-mail</option>
+          <option value="">Campanha</option>
           {campanhas.map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
-        <select name="fase" defaultValue={filters.fase ?? ''} className="select-chip">
+        <select name="faseCrm" defaultValue={filters.faseCrm ?? ''} className="select-chip">
           <option value="">Fase CRM</option>
           {fases.map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
-        <input className="select-chip" type="month" name="dateFrom" defaultValue={filters.dateFrom?.slice(0, 7)} />
-        <input className="select-chip" type="month" name="dateTo" defaultValue={filters.dateTo?.slice(0, 7)} />
+        <select name="emailType" defaultValue={filters.emailType ?? ''} className="select-chip">
+          <option value="">Tipo de e-mail (régua)</option>
+          {fases.map((item) => <option key={item} value={item}>{item}</option>)}
+        </select>
+        <input className="select-chip" type="month" name="dateFrom" defaultValue={filters.dateFrom} />
+        <input className="select-chip" type="month" name="dateTo" defaultValue={filters.dateTo} />
         <button className="primary-btn" type="submit">Aplicar</button>
         <Link href="/" className="btn-clr">Limpar tudo</Link>
         <div className="fres"><strong>{filteredCount.toLocaleString('pt-BR')}</strong> registros filtrados</div>
@@ -142,15 +141,69 @@ function DashboardEmptyState({
   );
 }
 
+function InlineCardEmpty({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="chart-empty">
+      <strong>{title}</strong>
+      <span>{description}</span>
+    </div>
+  );
+}
+
+function PhaseOpenRateList({ entries }: { entries: PhasePerformance[] }) {
+  const maxRate = entries[0]?.openRate || 1;
+
+  return (
+    <div className="fgrid">
+      {entries.map((entry, index) => {
+        const colors = ['#E07A1F', '#178F83', '#2F9E44', '#3B82F6', '#8B5CF6', '#D97706', '#0EA5E9'];
+        const color = colors[index % colors.length];
+        return (
+          <div className="fi" key={entry.faseCrm}>
+            <div className="fdot" style={{ background: color, boxShadow: `0 0 5px ${color}33` }} />
+            <div className="fn">{entry.faseCrm}</div>
+            <div className="fb"><div className="fbf" style={{ width: `${Math.max(8, Math.round((entry.openRate / maxRate) * 100))}%`, background: color }} /></div>
+            <div className="fpct" style={{ color }}>{entry.openRate}%</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ReguaPerformanceList({ entries }: { entries: ReguaPerformance[] }) {
+  const topEntries = entries.slice(0, 8);
+  const maxRate = topEntries[0]?.openRate || 1;
+
+  return (
+    <div className="small-list">
+      {topEntries.map((entry) => (
+        <div className="regua-line" key={`${entry.etapaRegua}-${entry.faseCrm}`}>
+          <div className="regua-line-copy">
+            <strong>{entry.etapaRegua}</strong>
+            <span>{entry.faseCrm}</span>
+          </div>
+          <div className="regua-line-metric">
+            <div className="regua-line-bar">
+              <div className="regua-line-fill" style={{ width: `${Math.max(10, Math.round((entry.openRate / maxRate) * 100))}%` }} />
+            </div>
+            <strong>{entry.openRate}%</strong>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function Dashboard({ state, filters }: { state: DashboardState | null; filters: Filters }) {
   const sourceData = state?.data ?? [];
   const filtered = state ? applyFilters(sourceData, filters) : [];
-  const hasResults = filtered.length > 0;
   const metrics = aggregate(filtered);
+  const hasResults = filtered.length > 0;
 
-  const grupos = uniqueValues(sourceData, 0);
-  const campanhas = uniqueValues(sourceData, 2).filter((v) => v !== '(sem nome)');
-  const fases = uniqueValues(sourceData, 3);
+  const grupos = uniqueValues(sourceData, (row) => row.grupo);
+  const campanhas = uniqueValues(sourceData, (row) => row.campanha).filter((value) => value !== '(sem nome)');
+  const fases = uniqueValues(sourceData, (row) => row.faseCrm);
 
   if (!state) {
     return (
@@ -159,10 +212,10 @@ export default function Dashboard({ state, filters }: { state: DashboardState | 
           <DashboardTopbar state={null} filteredCount={0} />
           <DashboardEmptyState
             title="Nenhuma base carregada"
-            description="O dashboard já está pronto, mas ainda não existe uma base persistida no servidor. Assim que o primeiro arquivo for salvo na área administrativa, a home passa a refletir esse estado automaticamente."
+            description="O dashboard já está pronto, mas ainda não existe uma base carregada em memória no servidor. Assim que o primeiro arquivo for salvo na área administrativa, a home passa a refletir os novos dados."
             details={[
               ['Área de upload', '/admin/upload'],
-              ['Persistência', 'server-side'],
+              ['Origem da análise', 'Base_Looker'],
               ['Exibição', 'empty state do dashboard'],
             ]}
             showClearFilters={false}
@@ -190,12 +243,12 @@ export default function Dashboard({ state, filters }: { state: DashboardState | 
             filteredCount={0}
           />
           <DashboardEmptyState
-            title={hasActiveFilters(filters) ? 'Nenhum dado encontrado' : 'Nenhum dado disponível'}
-            description={hasActiveFilters(filters)
-              ? 'Os filtros aplicados não retornaram registros. Você pode limpar os filtros para voltar ao consolidado ou subir uma nova base se precisar atualizar a origem dos dados.'
-              : 'A base atual existe, mas não há linhas utilizáveis para montar o dashboard neste recorte. Vale revisar o arquivo carregado para garantir as colunas e datas esperadas.'}
+            title={hasActiveGlobalFilters(filters) ? 'Nenhum dado encontrado' : 'Nenhum dado disponível'}
+            description={hasActiveGlobalFilters(filters)
+              ? 'Os filtros globais aplicados não retornaram registros. Você pode limpar os filtros para voltar ao consolidado ou subir uma nova base se precisar atualizar a origem dos dados.'
+              : 'A base atual existe, mas não há linhas utilizáveis para montar o dashboard neste recorte. Vale revisar a aba Base_Looker do arquivo carregado.'}
             details={buildAppliedFilters(filters)}
-            showClearFilters={hasActiveFilters(filters)}
+            showClearFilters={hasActiveGlobalFilters(filters)}
           />
           <footer>
             <span>🌱 Raiz Educação — Dashboard Email Marketing</span>
@@ -207,34 +260,13 @@ export default function Dashboard({ state, filters }: { state: DashboardState | 
     );
   }
 
-  const byGroup = new Map<string, { enviados: number; abertos: number; cliques: number }>();
-  const byPhase = new Map<string, { enviados: number; abertos: number }>();
-  const byCampaign = new Map<string, { campanha: string; grupo: string; enviados: number; abertos: number; cliques: number }>();
-
-  for (const row of filtered) {
-    const group = byGroup.get(row[0]) ?? { enviados: 0, abertos: 0, cliques: 0 };
-    group.enviados += row[5];
-    group.abertos += row[7];
-    group.cliques += row[8];
-    byGroup.set(row[0], group);
-
-    const phase = byPhase.get(row[3]) ?? { enviados: 0, abertos: 0 };
-    phase.enviados += row[5];
-    phase.abertos += row[7];
-    byPhase.set(row[3], phase);
-
-    const key = `${row[2]}|||${row[0]}`;
-    const campaign = byCampaign.get(key) ?? { campanha: row[2], grupo: row[0], enviados: 0, abertos: 0, cliques: 0 };
-    campaign.enviados += row[5];
-    campaign.abertos += row[7];
-    campaign.cliques += row[8];
-    byCampaign.set(key, campaign);
-  }
-
-  const topGroups = [...byGroup.entries()].sort((a, b) => b[1].enviados - a[1].enviados).slice(0, 10);
-  const phaseEntries = [...byPhase.entries()].sort((a, b) => b[1].enviados - a[1].enviados);
-  const topCampaigns = [...byCampaign.values()].sort((a, b) => b.enviados - a.enviados).slice(0, 10);
-  const monthly = buildMonthlySeries(filtered);
+  const reguaFiltered = applyEmailTypeFilter(filtered, filters.emailType);
+  const reguaSeries = buildReguaSeries(reguaFiltered);
+  const funnelSteps = buildFunnelSteps(metrics);
+  const groupEntries = buildGroupPerformance(filtered).slice(0, 10);
+  const phaseEntries = buildPhasePerformance(filtered);
+  const campaignEntries = buildCampaignPerformance(filtered).slice(0, 10);
+  const reguaEntries = buildReguaPerformance(reguaFiltered).slice(0, 10);
   const now = new Date(state.uploadedAt);
 
   return (
@@ -262,74 +294,89 @@ export default function Dashboard({ state, filters }: { state: DashboardState | 
           <div className="slbl">Funil & Evolução</div>
           <div className="g32">
             <div className="card">
-              <div className="chd"><div className="ctit"><span className="dot" style={{ background: 'var(--org)' }} />Resumo</div><span className="cbdg">{filters.grupo || filters.campanha || 'Consolidado'}</span></div>
-              <div className="small-list">
-                <div className="file-line"><span>Enviados</span><strong>{fmt(metrics.enviados)}</strong></div>
-                <div className="file-line"><span>Entregues</span><strong>{fmt(metrics.entregues)} · {percentage(metrics.entregues, metrics.enviados)}%</strong></div>
-                <div className="file-line"><span>Abertos</span><strong>{fmt(metrics.abertos)} · {percentage(metrics.abertos, metrics.enviados)}%</strong></div>
-                <div className="file-line"><span>Cliques</span><strong>{fmt(metrics.cliques)} · {percentage(metrics.cliques, metrics.enviados)}%</strong></div>
+              <div className="chd">
+                <div className="ctit"><span className="dot" style={{ background: 'var(--org)' }} />Funil literal</div>
+                <span className="cbdg">{filters.grupo || filters.campanha || 'Consolidado'}</span>
               </div>
+              <FunnelChart steps={funnelSteps} />
             </div>
             <div className="card">
-              <div className="chd"><div className="ctit"><span className="dot" style={{ background: 'var(--tel)' }} />Evolução Mensal</div></div>
-              <EvolutionChart {...monthly} />
+              <div className="chd">
+                <div className="ctit"><span className="dot" style={{ background: 'var(--tel)' }} />Taxa de abertura por dia da régua</div>
+                <span className="cbdg">{filters.emailType || 'Todos os tipos'}</span>
+              </div>
+              {reguaSeries.length > 0 ? (
+                <>
+                  <ReguaOpenRateChart points={reguaSeries} />
+                  <div className="card-caption">
+                    Análise por `Dia_Regua`, com contexto de `Etapa_Régua` no tooltip.
+                  </div>
+                </>
+              ) : (
+                <InlineCardEmpty
+                  title="Sem dados para a régua selecionada"
+                  description="Ajuste o filtro de tipo de e-mail para visualizar a taxa de abertura por dia da régua."
+                />
+              )}
             </div>
           </div>
 
           <div className="slbl">Grupos & Fases</div>
           <div className="g2">
             <div className="card">
-              <div className="chd"><div className="ctit"><span className="dot" style={{ background: 'var(--org)' }} />Top Grupos por Volume</div><span className="cbdg">Top 10</span></div>
-              <table className="dtbl"><thead><tr><th>#</th><th>Grupo</th><th>Abertura</th><th>CTOR</th></tr></thead><tbody>
-                {topGroups.map(([group, values], index) => (
-                  <tr key={group}>
+              <div className="chd"><div className="ctit"><span className="dot" style={{ background: 'var(--org)' }} />Top grupos por volume</div><span className="cbdg">Top 10</span></div>
+              <table className="dtbl"><thead><tr><th>#</th><th>Grupo</th><th>Tx. Abertura</th><th>CTOR</th></tr></thead><tbody>
+                {groupEntries.map((entry, index) => (
+                  <tr key={entry.grupo}>
                     <td><span className="rk">{index + 1}</span></td>
-                    <td><div className="nm">{group}</div><div className="ns">{fmt(values.enviados)} envios</div></td>
-                    <td><span className={`pill ${percentage(values.abertos, values.enviados) > 40 ? 'po' : 'pm'}`}>{percentage(values.abertos, values.enviados)}%</span></td>
-                    <td><span className={`pill ${percentage(values.cliques, values.abertos) > 25 ? 'pt' : 'pm'}`}>{percentage(values.cliques, values.abertos)}%</span></td>
+                    <td><div className="nm">{entry.grupo}</div><div className="ns">{fmt(entry.enviados)} envios</div></td>
+                    <td><span className={`pill ${entry.openRate > 40 ? 'po' : 'pm'}`}>{entry.openRate}%</span></td>
+                    <td><span className={`pill ${entry.ctor > 25 ? 'pt' : 'pm'}`}>{entry.ctor}%</span></td>
                   </tr>
                 ))}
               </tbody></table>
             </div>
+
             <div className="card">
-              <div className="chd"><div className="ctit"><span className="dot" style={{ background: 'var(--tel)' }} />Por Fase CRM</div></div>
-              <div className="fgrid">
-                {phaseEntries.map(([phase, values], index) => {
-                  const colors = ['#FF6D00', '#FF9038', '#00BFA5', '#1DE9B6', '#7C6AF9', '#A78BFA', '#00C853'];
-                  const color = colors[index % colors.length];
-                  const max = phaseEntries[0]?.[1].enviados || 1;
-                  return (
-                    <div className="fi" key={phase}>
-                      <div className="fdot" style={{ background: color, boxShadow: `0 0 5px ${color}55` }} />
-                      <div className="fn">{phase}</div>
-                      <div className="fb"><div className="fbf" style={{ width: `${Math.round((values.enviados / max) * 100)}%`, background: color }} /></div>
-                      <div className="fpct" style={{ color }}>{percentage(values.abertos, values.enviados)}%</div>
-                    </div>
-                  );
-                })}
+              <div className="chd"><div className="ctit"><span className="dot" style={{ background: 'var(--tel)' }} />Taxa de abertura por fase CRM</div><span className="cbdg">Dado analisado</span></div>
+              <PhaseOpenRateList entries={phaseEntries} />
+              <div className="small-list compact-list">
+                {phaseEntries.slice(0, 3).map((entry) => (
+                  <div className="file-line" key={entry.faseCrm}>
+                    <span>{entry.faseCrm}</span>
+                    <strong>{fmt(entry.abertos)} abertos / {fmt(entry.enviados)} enviados</strong>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
 
-          <div className="slbl">Campanhas</div>
+          <div className="slbl">Campanhas & Etapas</div>
           <div className="g32">
             <div className="card">
-              <div className="chd"><div className="ctit"><span className="dot" style={{ background: 'var(--org)' }} />Performance de Campanhas</div><span className="cbdg">Top 10</span></div>
+              <div className="chd"><div className="ctit"><span className="dot" style={{ background: 'var(--org)' }} />Performance de campanhas</div><span className="cbdg">Top 10</span></div>
               <table className="dtbl"><thead><tr><th>#</th><th>Campanha</th><th>Grupo</th><th>Tx. Abertura</th><th>CTOR</th></tr></thead><tbody>
-                {topCampaigns.map((campaign, index) => (
+                {campaignEntries.map((campaign, index) => (
                   <tr key={`${campaign.campanha}-${campaign.grupo}`}>
                     <td><span className="rk">{index + 1}</span></td>
                     <td><div className="nm">{campaign.campanha}</div></td>
                     <td><div className="ns">{campaign.grupo}</div></td>
-                    <td><span className={`pill ${percentage(campaign.abertos, campaign.enviados) > 40 ? 'po' : 'pm'}`}>{percentage(campaign.abertos, campaign.enviados)}%</span></td>
-                    <td><span className={`pill ${percentage(campaign.cliques, campaign.abertos) > 25 ? 'pt' : 'pm'}`}>{percentage(campaign.cliques, campaign.abertos)}%</span></td>
+                    <td><span className={`pill ${campaign.openRate > 40 ? 'po' : 'pm'}`}>{campaign.openRate}%</span></td>
+                    <td><span className={`pill ${campaign.ctor > 25 ? 'pt' : 'pm'}`}>{campaign.ctor}%</span></td>
                   </tr>
                 ))}
               </tbody></table>
             </div>
             <div className="card">
-              <div className="chd"><div className="ctit"><span className="dot" style={{ background: 'var(--tel)' }} />Volume por Fase</div></div>
-              <PhaseDonut labels={phaseEntries.map(([label]) => label)} values={phaseEntries.map(([, value]) => value.enviados)} />
+              <div className="chd"><div className="ctit"><span className="dot" style={{ background: 'var(--tel)' }} />Etapas da régua por taxa de abertura</div><span className="cbdg">{filters.emailType || 'Todos os tipos'}</span></div>
+              {reguaEntries.length > 0 ? (
+                <ReguaPerformanceList entries={reguaEntries} />
+              ) : (
+                <InlineCardEmpty
+                  title="Nenhuma etapa disponível"
+                  description="Não há etapas da régua para o tipo de e-mail selecionado neste recorte."
+                />
+              )}
             </div>
           </div>
         </main>
