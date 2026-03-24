@@ -1,7 +1,7 @@
-import { clearSession } from '@/lib/auth';
+import { clearAdminSession } from '@/lib/auth';
 import { redirectTo } from '@/lib/redirect';
 
 export async function POST() {
-  await clearSession();
+  await clearAdminSession();
   return redirectTo('/admin/upload');
 }

@@ -54,6 +54,9 @@ function DashboardTopbar({ state, filteredCount }: { state: DashboardState | nul
         <div className="meta-chip">{state ? state.fileName : 'Nenhuma base carregada'}</div>
         <div className="meta-chip">{now ? now.toLocaleDateString('pt-BR') : 'Sem atualização'}</div>
         {state ? <div className="meta-chip"><strong>{filteredCount.toLocaleString('pt-BR')}</strong> visíveis</div> : null}
+        <form action="/api/dashboard-logout" method="post">
+          <button className="secondary-btn" type="submit">Sair do dashboard</button>
+        </form>
         <Link href="/admin/upload" className="btn-update">{state ? 'Atualizar base' : 'Carregar base'}</Link>
       </div>
     </header>

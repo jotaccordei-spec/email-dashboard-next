@@ -1,11 +1,11 @@
 import { NextRequest } from 'next/server';
-import { isAuthenticated } from '@/lib/auth';
+import { isAdminAuthenticated } from '@/lib/auth';
 import { parseSpreadsheet, processRows, validateColumns } from '@/lib/data';
 import { redirectTo } from '@/lib/redirect';
 import { saveDashboardState, saveUploadedFile } from '@/lib/store';
 
 export async function POST(request: NextRequest) {
-  const authenticated = await isAuthenticated();
+  const authenticated = await isAdminAuthenticated();
   if (!authenticated) {
     return redirectTo('/admin/upload', { error: 'Sessão inválida' });
   }

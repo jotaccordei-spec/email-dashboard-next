@@ -1,9 +1,9 @@
 import Link from 'next/link';
-import { isAuthenticated } from '@/lib/auth';
+import { isAdminAuthenticated } from '@/lib/auth';
 import { listGeneratedFiles, readDashboardState } from '@/lib/store';
 
 export default async function UploadPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const authenticated = await isAuthenticated();
+  const authenticated = await isAdminAuthenticated();
   const params = await searchParams;
   const error = typeof params.error === 'string' ? params.error : '';
 

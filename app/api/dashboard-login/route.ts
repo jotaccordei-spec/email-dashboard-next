@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { createAdminSession, isValidAdminCredential } from '@/lib/auth';
+import { createViewerSession, isValidViewerCredential } from '@/lib/auth';
 import { redirectTo } from '@/lib/redirect';
 
 export async function POST(request: NextRequest) {
@@ -7,10 +7,10 @@ export async function POST(request: NextRequest) {
   const user = String(formData.get('user') ?? '');
   const password = String(formData.get('password') ?? '');
 
-  if (!isValidAdminCredential(user, password)) {
-    return redirectTo('/admin/upload', { error: 'Credenciais inválidas' });
+  if (!isValidViewerCredential(user, password)) {
+    return redirectTo('/', { error: 'Credenciais inválidas' });
   }
 
-  await createAdminSession();
-  return redirectTo('/admin/upload');
+  await createViewerSession(user, password);
+  return redirectTo('/');
 }
