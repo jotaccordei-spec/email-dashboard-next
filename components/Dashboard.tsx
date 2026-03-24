@@ -145,7 +145,6 @@ function DashboardEmptyState({
 export default function Dashboard({ state, filters }: { state: DashboardState | null; filters: Filters }) {
   const sourceData = state?.data ?? [];
   const filtered = state ? applyFilters(sourceData, filters) : [];
-  const hasState = Boolean(state);
   const hasResults = filtered.length > 0;
   const metrics = aggregate(filtered);
 
@@ -153,7 +152,7 @@ export default function Dashboard({ state, filters }: { state: DashboardState | 
   const campanhas = uniqueValues(sourceData, 2).filter((v) => v !== '(sem nome)');
   const fases = uniqueValues(sourceData, 3);
 
-  if (!hasState) {
+  if (!state) {
     return (
       <div className="page">
         <div className="wrap">
