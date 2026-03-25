@@ -1,4 +1,7 @@
+'use client';
+
 import Link from 'next/link';
+import { startTransition, useEffect, useState } from 'react';
 import { FunnelChart, ReguaOpenRateChart } from '@/components/Charts';
 import {
   aggregate,
@@ -37,7 +40,7 @@ function buildScopedFilters(filters: Filters, omittedKey: keyof Filters): Filter
 
 function buildAppliedFilters(filters: Filters): Array<[string, string]> {
   return [
-    ['Grupo', filters.grupo ?? 'Todos'],
+    ['Colégio', filters.grupo ?? 'Todos'],
     ['Campanha', filters.campanha ?? 'Todas'],
     ['Fase CRM', filters.faseCrm ?? 'Todas'],
     ['Tipo de e-mail (régua)', filters.emailType ?? 'Todos'],
@@ -74,44 +77,56 @@ function DashboardTopbar({ state, filteredCount }: { state: DashboardState | nul
 }
 
 function DashboardFilters({
-  filters,
+  draftFilters,
   grupos,
   campanhas,
   fases,
   emailTypes,
   filteredCount,
+  onApply,
+  onClear,
+  onFilterChange,
 }: {
-  filters: Filters;
+  draftFilters: Filters;
   grupos: string[];
   campanhas: string[];
   fases: string[];
   emailTypes: string[];
   filteredCount: number;
+  onApply: () => void;
+  onClear: () => void;
+  onFilterChange: (key: keyof Filters, value: string) => void;
 }) {
   return (
-    <form className="filter-section" action="/">
+    <form
+      className="filter-section"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onApply();
+      }}
+    >
       <div className="filter-row wrap" style={{ padding: 0 }}>
         <span className="filter-label">Filtros</span>
-        <select name="grupo" defaultValue={filters.grupo ?? ''} className="select-chip">
+        <select name="grupo" value={draftFilters.grupo ?? ''} className="select-chip" onChange={(event) => onFilterChange('grupo', event.target.value)}>
           <option value="">Colégio / Marca</option>
           {grupos.map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
-        <select name="campanha" defaultValue={filters.campanha ?? ''} className="select-chip">
+        <select name="campanha" value={draftFilters.campanha ?? ''} className="select-chip" onChange={(event) => onFilterChange('campanha', event.target.value)}>
           <option value="">Campanha</option>
           {campanhas.map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
-        <select name="faseCrm" defaultValue={filters.faseCrm ?? ''} className="select-chip">
+        <select name="faseCrm" value={draftFilters.faseCrm ?? ''} className="select-chip" onChange={(event) => onFilterChange('faseCrm', event.target.value)}>
           <option value="">Fase CRM</option>
           {fases.map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
-        <select name="emailType" defaultValue={filters.emailType ?? ''} className="select-chip">
+        <select name="emailType" value={draftFilters.emailType ?? ''} className="select-chip" onChange={(event) => onFilterChange('emailType', event.target.value)}>
           <option value="">Tipo de e-mail (régua)</option>
           {emailTypes.map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
-        <input className="select-chip" type="month" name="dateFrom" defaultValue={filters.dateFrom} />
-        <input className="select-chip" type="month" name="dateTo" defaultValue={filters.dateTo} />
+        <input className="select-chip" type="month" name="dateFrom" value={draftFilters.dateFrom ?? ''} onChange={(event) => onFilterChange('dateFrom', event.target.value)} />
+        <input className="select-chip" type="month" name="dateTo" value={draftFilters.dateTo ?? ''} onChange={(event) => onFilterChange('dateTo', event.target.value)} />
         <button className="primary-btn" type="submit">Aplicar</button>
-        <Link href="/" className="btn-clr">Limpar tudo</Link>
+        <button className="btn-clr" type="button" onClick={onClear}>Limpar tudo</button>
         <div className="fres"><strong>{filteredCount.toLocaleString('pt-BR')}</strong> registros filtrados</div>
       </div>
     </form>
@@ -123,11 +138,13 @@ function DashboardEmptyState({
   description,
   details,
   showClearFilters,
+  onClearFilters,
 }: {
   title: string;
   description: string;
   details: Array<[string, string]>;
   showClearFilters: boolean;
+  onClearFilters: () => void;
 }) {
   return (
     <main className="main">
@@ -139,7 +156,7 @@ function DashboardEmptyState({
         </div>
 
         <div className="dashboard-empty-actions">
-          {showClearFilters ? <Link href="/" className="secondary-btn">Limpar filtros</Link> : null}
+          {showClearFilters ? <button className="secondary-btn" type="button" onClick={onClearFilters}>Limpar filtros</button> : null}
           <Link href="/admin/upload" className="primary-btn">Ir para upload</Link>
         </div>
 
@@ -211,15 +228,43 @@ function ReguaPerformanceList({ entries }: { entries: ReguaPerformance[] }) {
 }
 
 export default function Dashboard({ state, filters }: { state: DashboardState | null; filters: Filters }) {
+  const [draftFilters, setDraftFilters] = useState<Filters>(filters);
+  const [appliedFilters, setAppliedFilters] = useState<Filters>(filters);
+
+  useEffect(() => {
+    setDraftFilters(filters);
+    setAppliedFilters(filters);
+  }, [filters]);
+
   const sourceData = state?.data ?? [];
-  const filtered = state ? applyFilters(sourceData, filters) : [];
+  const filtered = state ? applyFilters(sourceData, appliedFilters) : [];
   const metrics = aggregate(filtered);
   const hasResults = filtered.length > 0;
 
-  const grupos = uniqueValues(applyFilters(sourceData, buildScopedFilters(filters, 'grupo')), (row) => row.grupo);
-  const campanhas = uniqueValues(applyFilters(sourceData, buildScopedFilters(filters, 'campanha')), (row) => row.campanha).filter((value) => value !== '(sem nome)');
-  const fases = uniqueValues(applyFilters(sourceData, buildScopedFilters(filters, 'faseCrm')), (row) => row.faseCrm);
-  const emailTypes = uniqueValues(filtered, (row) => row.faseCrm);
+  const grupos = uniqueValues(applyFilters(sourceData, buildScopedFilters(draftFilters, 'grupo')), (row) => row.grupo);
+  const campanhas = uniqueValues(applyFilters(sourceData, buildScopedFilters(draftFilters, 'campanha')), (row) => row.campanha).filter((value) => value !== '(sem nome)');
+  const fases = uniqueValues(applyFilters(sourceData, buildScopedFilters(draftFilters, 'faseCrm')), (row) => row.faseCrm);
+  const emailTypes = uniqueValues(applyFilters(sourceData, draftFilters), (row) => row.faseCrm);
+
+  const handleFilterChange = (key: keyof Filters, value: string) => {
+    setDraftFilters((current) => ({
+      ...current,
+      [key]: value || undefined,
+    }));
+  };
+
+  const applyDraftFilters = () => {
+    startTransition(() => {
+      setAppliedFilters({ ...draftFilters });
+    });
+  };
+
+  const clearFilters = () => {
+    startTransition(() => {
+      setDraftFilters({});
+      setAppliedFilters({});
+    });
+  };
 
   if (!state) {
     return (
@@ -235,6 +280,7 @@ export default function Dashboard({ state, filters }: { state: DashboardState | 
               ['Exibição', 'empty state do dashboard'],
             ]}
             showClearFilters={false}
+            onClearFilters={clearFilters}
           />
           <footer>
             <span>🌱 Raiz Educação — Dashboard Email Marketing</span>
@@ -252,20 +298,24 @@ export default function Dashboard({ state, filters }: { state: DashboardState | 
         <div className="wrap">
           <DashboardTopbar state={state} filteredCount={0} />
           <DashboardFilters
-            filters={filters}
+            draftFilters={draftFilters}
             grupos={grupos}
             campanhas={campanhas}
             fases={fases}
             emailTypes={emailTypes}
             filteredCount={0}
+            onApply={applyDraftFilters}
+            onClear={clearFilters}
+            onFilterChange={handleFilterChange}
           />
           <DashboardEmptyState
-            title={hasActiveGlobalFilters(filters) ? 'Nenhum dado encontrado' : 'Nenhum dado disponível'}
-            description={hasActiveGlobalFilters(filters)
+            title={hasActiveGlobalFilters(appliedFilters) ? 'Nenhum dado encontrado' : 'Nenhum dado disponível'}
+            description={hasActiveGlobalFilters(appliedFilters)
               ? 'Os filtros globais aplicados não retornaram registros. Você pode limpar os filtros para voltar ao consolidado ou subir uma nova base se precisar atualizar a origem dos dados.'
               : 'A base atual existe, mas não há linhas utilizáveis para montar o dashboard neste recorte. Vale revisar a aba Base_Looker do arquivo carregado.'}
-            details={buildAppliedFilters(filters)}
-            showClearFilters={hasActiveGlobalFilters(filters)}
+            details={buildAppliedFilters(appliedFilters)}
+            showClearFilters={hasActiveGlobalFilters(appliedFilters)}
+            onClearFilters={clearFilters}
           />
           <footer>
             <span>🌱 Raiz Educação — Dashboard Email Marketing</span>
@@ -277,7 +327,7 @@ export default function Dashboard({ state, filters }: { state: DashboardState | 
     );
   }
 
-  const reguaFiltered = applyEmailTypeFilter(filtered, filters.emailType);
+  const reguaFiltered = applyEmailTypeFilter(filtered, appliedFilters.emailType);
   const reguaSeries = buildReguaSeries(reguaFiltered);
   const funnelSteps = buildFunnelSteps(metrics);
   const groupEntries = buildGroupPerformance(filtered).slice(0, 10);
@@ -291,12 +341,15 @@ export default function Dashboard({ state, filters }: { state: DashboardState | 
       <div className="wrap">
         <DashboardTopbar state={state} filteredCount={filtered.length} />
         <DashboardFilters
-          filters={filters}
+          draftFilters={draftFilters}
           grupos={grupos}
           campanhas={campanhas}
           fases={fases}
           emailTypes={emailTypes}
           filteredCount={filtered.length}
+          onApply={applyDraftFilters}
+          onClear={clearFilters}
+          onFilterChange={handleFilterChange}
         />
 
         <main className="main">
@@ -314,14 +367,14 @@ export default function Dashboard({ state, filters }: { state: DashboardState | 
             <div className="card">
               <div className="chd">
                 <div className="ctit"><span className="dot" style={{ background: 'var(--org)' }} />Funil literal</div>
-                <span className="cbdg">{filters.grupo || filters.campanha || 'Consolidado'}</span>
+                <span className="cbdg">{appliedFilters.grupo || appliedFilters.campanha || 'Consolidado'}</span>
               </div>
               <FunnelChart steps={funnelSteps} />
             </div>
             <div className="card">
               <div className="chd">
                 <div className="ctit"><span className="dot" style={{ background: 'var(--tel)' }} />Taxa de abertura por dia da régua</div>
-                <span className="cbdg">{filters.emailType || 'Todos os tipos'}</span>
+                <span className="cbdg">{appliedFilters.emailType || 'Todos os tipos'}</span>
               </div>
               {reguaSeries.length > 0 ? (
                 <>
@@ -386,7 +439,7 @@ export default function Dashboard({ state, filters }: { state: DashboardState | 
               </tbody></table>
             </div>
             <div className="card">
-              <div className="chd"><div className="ctit"><span className="dot" style={{ background: 'var(--tel)' }} />Etapas da régua por taxa de abertura</div><span className="cbdg">{filters.emailType || 'Todos os tipos'}</span></div>
+              <div className="chd"><div className="ctit"><span className="dot" style={{ background: 'var(--tel)' }} />Etapas da régua por taxa de abertura</div><span className="cbdg">{appliedFilters.emailType || 'Todos os tipos'}</span></div>
               {reguaEntries.length > 0 ? (
                 <ReguaPerformanceList entries={reguaEntries} />
               ) : (
