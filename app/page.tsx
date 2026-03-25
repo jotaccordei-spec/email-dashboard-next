@@ -21,10 +21,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
       <div className="login-shell page">
         <div className="auth-card">
           <h1>Dashboard protegido</h1>
-          <p className="muted">
-            O acesso ao dashboard principal usa uma credencial separada do upload e é validado a partir da variável
-            <strong> DASHBOARD_VIEWER_USERS_JSON</strong>.
-          </p>
           {configError ? <div className="error-box" style={{ marginTop: 18 }}>{configError}</div> : null}
           {error ? <div className="error-box" style={{ marginTop: 18 }}>{error}</div> : null}
           <form action="/api/dashboard-login" method="post" className="form-grid">

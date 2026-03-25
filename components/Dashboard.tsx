@@ -25,6 +25,16 @@ function hasActiveGlobalFilters(filters: Filters): boolean {
   return Boolean(filters.grupo || filters.campanha || filters.faseCrm || filters.dateFrom || filters.dateTo);
 }
 
+function buildScopedFilters(filters: Filters, omittedKey: keyof Filters): Filters {
+  return {
+    grupo: omittedKey === 'grupo' ? undefined : filters.grupo,
+    campanha: omittedKey === 'campanha' ? undefined : filters.campanha,
+    faseCrm: omittedKey === 'faseCrm' ? undefined : filters.faseCrm,
+    dateFrom: omittedKey === 'dateFrom' ? undefined : filters.dateFrom,
+    dateTo: omittedKey === 'dateTo' ? undefined : filters.dateTo,
+  };
+}
+
 function buildAppliedFilters(filters: Filters): Array<[string, string]> {
   return [
     ['Grupo', filters.grupo ?? 'Todos'],
@@ -68,12 +78,14 @@ function DashboardFilters({
   grupos,
   campanhas,
   fases,
+  emailTypes,
   filteredCount,
 }: {
   filters: Filters;
   grupos: string[];
   campanhas: string[];
   fases: string[];
+  emailTypes: string[];
   filteredCount: number;
 }) {
   return (
@@ -81,7 +93,7 @@ function DashboardFilters({
       <div className="filter-row wrap" style={{ padding: 0 }}>
         <span className="filter-label">Filtros</span>
         <select name="grupo" defaultValue={filters.grupo ?? ''} className="select-chip">
-          <option value="">Grupo / Marca</option>
+          <option value="">Colégio / Marca</option>
           {grupos.map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
         <select name="campanha" defaultValue={filters.campanha ?? ''} className="select-chip">
@@ -94,7 +106,7 @@ function DashboardFilters({
         </select>
         <select name="emailType" defaultValue={filters.emailType ?? ''} className="select-chip">
           <option value="">Tipo de e-mail (régua)</option>
-          {fases.map((item) => <option key={item} value={item}>{item}</option>)}
+          {emailTypes.map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
         <input className="select-chip" type="month" name="dateFrom" defaultValue={filters.dateFrom} />
         <input className="select-chip" type="month" name="dateTo" defaultValue={filters.dateTo} />
@@ -204,9 +216,10 @@ export default function Dashboard({ state, filters }: { state: DashboardState | 
   const metrics = aggregate(filtered);
   const hasResults = filtered.length > 0;
 
-  const grupos = uniqueValues(sourceData, (row) => row.grupo);
-  const campanhas = uniqueValues(sourceData, (row) => row.campanha).filter((value) => value !== '(sem nome)');
-  const fases = uniqueValues(sourceData, (row) => row.faseCrm);
+  const grupos = uniqueValues(applyFilters(sourceData, buildScopedFilters(filters, 'grupo')), (row) => row.grupo);
+  const campanhas = uniqueValues(applyFilters(sourceData, buildScopedFilters(filters, 'campanha')), (row) => row.campanha).filter((value) => value !== '(sem nome)');
+  const fases = uniqueValues(applyFilters(sourceData, buildScopedFilters(filters, 'faseCrm')), (row) => row.faseCrm);
+  const emailTypes = uniqueValues(filtered, (row) => row.faseCrm);
 
   if (!state) {
     return (
@@ -243,6 +256,7 @@ export default function Dashboard({ state, filters }: { state: DashboardState | 
             grupos={grupos}
             campanhas={campanhas}
             fases={fases}
+            emailTypes={emailTypes}
             filteredCount={0}
           />
           <DashboardEmptyState
@@ -281,6 +295,7 @@ export default function Dashboard({ state, filters }: { state: DashboardState | 
           grupos={grupos}
           campanhas={campanhas}
           fases={fases}
+          emailTypes={emailTypes}
           filteredCount={filtered.length}
         />
 

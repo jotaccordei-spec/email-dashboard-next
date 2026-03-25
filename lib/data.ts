@@ -14,6 +14,7 @@ import {
 } from '@/lib/types';
 
 const REQUIRED_COLUMNS = ['Remetente', 'Ano_Mês', 'Enviados', 'Entregues', 'Abertos', 'Cliques', 'Campanha', 'Etapa_Régua', 'Fase_CRM', 'Dia_Regua'] as const;
+const INTERNAL_DOMAIN = 'raizeducacao.com.br';
 
 type RawRow = Record<string, unknown>;
 
@@ -25,6 +26,31 @@ const EMPTY_METRICS: AggregateMetrics = {
   descadastros: 0,
 };
 
+const GROUP_GUESSERS: Array<{ group: string; keywords: string[] }> = [
+  { group: 'Colégio QI', keywords: ['colegio qi', 'colegioqi', 'qi bilingue', 'financeiro qi'] },
+  { group: 'Colégio Matriz Educação', keywords: ['matriz educacao', 'matrizeducacao', 'matriz taquara'] },
+  { group: 'Colégio APOGEU', keywords: ['apogeu', 'colegioapogeu'] },
+  { group: 'Colégio Leonardo da Vinci', keywords: ['leonardo da vinci', 'colegioleonardodavinci', 'leo da vinci', 'clv gama', 'clvalfa'] },
+  { group: 'Colégio Ao Cubo', keywords: ['ao cubo', 'aocubo'] },
+  { group: 'Colégio Unificado', keywords: ['unificado', 'colegiouniao', 'colegio uniao'] },
+  { group: 'Escola Sá Pereira', keywords: ['sa pereira', 'sapereira'] },
+  { group: 'Escola SAP', keywords: ['escola sap', 'escolasap'] },
+  { group: 'Sarah Dawsey', keywords: ['sarah dawsey', 'sarahdawsey'] },
+  { group: 'Creche Global Tree', keywords: ['global tree', 'globaltree'] },
+  { group: 'Creche Ipê', keywords: ['creche ipe', 'escola ipe', 'crecheescolaipe'] },
+  { group: 'Creche Bom Tempo', keywords: ['bom tempo', 'crechebomtempo'] },
+  { group: 'Creche Sunny Days', keywords: ['sunny days', 'crechesunny'] },
+  { group: 'Escola Integra', keywords: ['escola integra', 'escolaintegra', 'integra'] },
+  { group: 'Colégio Metodista Americano', keywords: ['metodista americano', 'americano colegio bilingue', 'americano - colegio bilingue'] },
+  { group: 'Raiz Sistema de Ensino', keywords: ['raiz sistema de ensino', 'sistema raiz de ensino', 'proraiz'] },
+  { group: 'Programa Raízes', keywords: ['programa raizes', 'educacao socioemocional'] },
+  { group: 'Raiz Educação', keywords: ['raiz educacao', 'pessoas e cultura', 'clima raiz', 'academia raiz', 'beneficios', 'dp@', 'desenvolvimento'] },
+];
+
+const NORMALIZED_GMAP = new Map(
+  Object.entries(GMAP).map(([key, value]) => [normalizeText(key), value]),
+);
+
 function parseNumber(value: unknown): number {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
   if (typeof value !== 'string') return 0;
@@ -35,6 +61,75 @@ function parseNumber(value: unknown): number {
 
 function pad(value: number): string {
   return String(value).padStart(2, '0');
+}
+
+function normalizeText(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9@._ -]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function lookupMappedGroup(value: string): string | null {
+  if (!value) return null;
+  const normalized = normalizeText(value);
+  return NORMALIZED_GMAP.get(normalized) ?? null;
+}
+
+function guessGroupFromKeywords(...values: string[]): string | null {
+  const haystack = normalizeText(values.filter(Boolean).join(' | '));
+  if (!haystack) return null;
+
+  const match = GROUP_GUESSERS.find(({ keywords }) => keywords.some((keyword) => haystack.includes(normalizeText(keyword))));
+  return match?.group ?? null;
+}
+
+function looksLikeInstitutionName(value: string): boolean {
+  const normalized = normalizeText(value);
+  if (!normalized) return false;
+
+  return /(colegio|escola|creche|instituto|programa|sistema|raiz|americano|apogeu|global tree|sunny|bom tempo|integra|unificado|qi|cubo|sap|sarah)/.test(normalized);
+}
+
+function looksLikePlaceholderOrPerson(value: string): boolean {
+  const normalized = normalizeText(value);
+  if (!normalized) return true;
+  if (normalized.includes('{{owner')) return true;
+  if (normalized.includes('@')) return false;
+  if (looksLikeInstitutionName(value)) return false;
+
+  const words = normalized.split(' ').filter(Boolean);
+  if (words.length < 2 || words.length > 5) return false;
+
+  return words.every((word) => /^[a-z]+$/.test(word));
+}
+
+function resolveGroup(remetente: string, dominio: string, campanha: string): string {
+  const mappedSender = lookupMappedGroup(remetente);
+  if (mappedSender) return mappedSender;
+
+  const mappedDomain = lookupMappedGroup(dominio);
+  if (mappedDomain) return mappedDomain;
+
+  const guessed = guessGroupFromKeywords(remetente, dominio, campanha);
+  if (guessed) return guessed;
+
+  if (dominio.includes(INTERNAL_DOMAIN)) {
+    return 'Raiz Educação';
+  }
+
+  if (looksLikeInstitutionName(remetente)) {
+    return remetente;
+  }
+
+  if (looksLikePlaceholderOrPerson(remetente)) {
+    return 'Outros';
+  }
+
+  return remetente || 'Outros';
 }
 
 function normalizeDateParts(rawDate: unknown): { sentAt: string; sentMonth: string } | null {
@@ -138,7 +233,7 @@ export function processRows(rows: RawRow[]): DataRow[] {
     const diaRegua = diaReguaValue > 0 ? Math.round(diaReguaValue) : null;
 
     processed.push({
-      grupo: GMAP[remetente] || remetente || 'Outros',
+      grupo: resolveGroup(remetente, dominio, campanha),
       remetente,
       dominio,
       campanha,

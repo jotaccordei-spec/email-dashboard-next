@@ -12,7 +12,6 @@ export default async function UploadPage({ searchParams }: { searchParams: Promi
       <div className="login-shell page">
         <div className="auth-card">
           <h1>Área restrita de upload</h1>
-          <p className="muted">A home principal não recebe mais upload. O acesso administrativo usa credenciais vindas de variáveis de ambiente.</p>
           {error ? <div className="error-box" style={{ marginTop: 18 }}>{error}</div> : null}
           <form action="/api/login" method="post" className="form-grid">
             <div className="field"><label htmlFor="user">Usuário</label><input id="user" name="user" type="text" required /></div>
